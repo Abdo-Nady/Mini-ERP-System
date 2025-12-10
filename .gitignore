@@ -1,2 +1,8 @@
 .venv/
 .env
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Django specific
+db.sqlite3
