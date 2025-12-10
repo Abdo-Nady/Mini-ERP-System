@@ -28,6 +28,11 @@ class SalesOrder(models.Model):
             for line in self.lines.all():
                 line.product.stock -= line.qty
                 line.product.save()
+                StockMovementLog.objects.create(
+                    product=line.product,
+                    qty=-line.qty,
+                    user=self.created_by
+                )
             self.status = self.Status.CONFIRMED
             self.save()
 
@@ -36,6 +41,11 @@ class SalesOrder(models.Model):
             for line in self.lines.all():
                 line.product.stock += line.qty
                 line.product.save()
+                StockMovementLog.objects.create(
+                    product=line.product,
+                    qty=line.qty,
+                    user=self.created_by
+                )
             self.status = self.Status.CANCELLED
             self.save()
 
@@ -59,3 +69,18 @@ class SalesOrderLine(models.Model):
 
     def __str__(self):
         return f"{self.product.name} ({self.qty})"
+
+
+from django.db import models
+from django.contrib.auth.models import User
+from products.models import Product
+
+class StockMovementLog(models.Model):
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='stock_logs')
+    qty = models.IntegerField()
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        action = "Added" if self.qty > 0 else "Removed"
+        return f"{action} {abs(self.qty)} of {self.product.name} by {self.user}"

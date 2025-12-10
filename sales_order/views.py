@@ -1,7 +1,7 @@
 from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated
-from .models import SalesOrder
-from .serializers import SalesOrderSerializer
+from .models import SalesOrder , StockMovementLog
+from .serializers import SalesOrderSerializer ,StockMovementLogSerializer
 from .permissions import IsAdminOrSalesUserCreateOnly
 
 
@@ -19,3 +19,9 @@ class SalesOrderViewSet(viewsets.ModelViewSet):
             order.confirm_order()
         elif order.status == order.Status.CANCELLED:
             order.cancel_order()
+
+
+class StockMovementLogViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = StockMovementLog.objects.all().order_by('-timestamp')
+    serializer_class = StockMovementLogSerializer
+    permission_classes = [IsAuthenticated]
