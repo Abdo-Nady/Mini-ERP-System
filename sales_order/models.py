@@ -1,4 +1,4 @@
-from django.db import models
+from django.db import models, transaction
 from django.contrib.auth.models import User
 from customer.models import Customer
 from decimal import Decimal
@@ -18,54 +18,89 @@ class SalesOrder(models.Model):
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING)
     total_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
 
+    def save(self, *args, **kwargs):
 
-    def confirm_order(self):
-        if self.status == self.Status.PENDING:
-            for line in self.lines.all():
-                if line.product.stock < line.qty:
-                    raise ValueError(f"Not enough stock for {line.product.name}")
+        old_status = None
+        if self.pk:
+            try:
+                old_status = SalesOrder.objects.get(pk=self.pk).status
+            except SalesOrder.DoesNotExist:
+                old_status = None
 
-            for line in self.lines.all():
-                line.product.stock -= line.qty
-                line.product.save()
-                StockMovementLog.objects.create(
-                    product=line.product,
-                    qty=-line.qty,
-                    user=self.created_by
-                )
-            self.status = self.Status.CONFIRMED
-            self.save()
+        super().save(*args, **kwargs)
 
-    def cancel_order(self):
-        if self.status == self.Status.CONFIRMED:
-            for line in self.lines.all():
-                line.product.stock += line.qty
-                line.product.save()
-                StockMovementLog.objects.create(
-                    product=line.product,
-                    qty=line.qty,
-                    user=self.created_by
-                )
-            self.status = self.Status.CANCELLED
-            self.save()
+        if old_status != self.status:
+            if self.status == self.Status.CONFIRMED and old_status == self.Status.PENDING:
+                self._confirm_order()
+            elif self.status == self.Status.CANCELLED and old_status == self.Status.CONFIRMED:
+                self._cancel_order()
+
+    @transaction.atomic
+    def _confirm_order(self):
+        """Confirm order and reduce stock"""
+        for line in self.lines.select_for_update().all():
+            if line.product.stock < line.qty:
+                self.status = self.Status.PENDING
+                super().save(update_fields=['status'])
+                raise ValueError(f"Not enough stock for {line.product.name}")
+
+        for line in self.lines.all():
+            line.product.stock -= line.qty
+            line.product.save(update_fields=['stock'])
+
+            StockMovementLog.objects.create(
+                product=line.product,
+                qty=-line.qty,
+                user=self.created_by,
+
+            )
+
+    @transaction.atomic
+    def _cancel_order(self):
+        """Cancel order and restore stock"""
+        for line in self.lines.select_for_update().all():
+            line.product.stock += line.qty
+            line.product.save(update_fields=['stock'])
+
+            StockMovementLog.objects.create(
+                product=line.product,
+                qty=line.qty,
+                user=self.created_by,
+                reference_type='sales_order_cancelled',
+                reference_id=self.order_number
+            )
 
     def update_total(self):
         total = sum(line.line_total for line in self.lines.all())
         self.total_amount = Decimal(total)
-        self.save()
+        self.save(update_fields=['total_amount'])
 
     def __str__(self):
         return f"Order {self.order_number} - {self.customer}"
+
 
 class SalesOrderLine(models.Model):
     order = models.ForeignKey(SalesOrder, on_delete=models.CASCADE, related_name='lines')
     product = models.ForeignKey(Product, on_delete=models.CASCADE)
     qty = models.PositiveIntegerField(default=1)
-    price = models.DecimalField(max_digits=10, decimal_places=2)
+    price = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
 
     @property
     def line_total(self):
         return self.price * self.qty
+
+    def save(self, *args, **kwargs):
+        if not self.price:
+            self.price = self.product.selling_price
+        super().save(*args, **kwargs)
+
+        if self.order_id:
+            self.order.update_total()
+
+    def delete(self, *args, **kwargs):
+        order = self.order
+        super().delete(*args, **kwargs)
+        order.update_total()
 
     def __str__(self):
         return f"{self.product.name} ({self.qty})"
