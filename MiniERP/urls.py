@@ -27,6 +27,7 @@ urlpatterns = [
 
     # App URLs
     path('api/', include('products.urls')),
+    path('api/', include('customer.urls')),
 ]
 
 if settings.DEBUG:
