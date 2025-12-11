@@ -158,3 +158,14 @@ def dashboard(request):
         "total_sales_today": total_sales_today,
         "stock_running_low": list(low_stock_products)
     })
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def menu(request):
+    user = request.user
+    if user.is_staff:
+        items = ["dashboard", "customers", "sales", "products", "reports"]
+    else:
+        items = ["customers", "sales"]
+
+    return Response({"menu": items})
