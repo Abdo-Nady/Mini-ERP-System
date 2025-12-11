@@ -51,6 +51,7 @@ INSTALLED_APPS = [
     "customer",
     "sales_order",
     "reports",
+    "drf_yasg",
 ]
 
 MIDDLEWARE = [
@@ -70,7 +71,9 @@ REST_FRAMEWORK = {
     ],
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
-    ]
+    ],
+    'DEFAULT_SCHEMA_CLASS': 'rest_framework.schemas.coreapi.AutoSchema',
+
 }
 
 
@@ -86,6 +89,25 @@ SIMPLE_JWT = {
 }
 
 
+SWAGGER_SETTINGS = {
+    'SECURITY_DEFINITIONS': {
+        'Bearer': {
+            'type': 'apiKey',
+            'name': 'Authorization',
+            'in': 'header',
+            'description': 'JWT Authorization header using the Bearer scheme. Example: "Bearer {token}"'
+        }
+    },
+    'USE_SESSION_AUTH': False,  # Disable Django session auth in Swagger
+    'JSON_EDITOR': True,
+    'SUPPORTED_SUBMIT_METHODS': [
+        'get',
+        'post',
+        'put',
+        'patch',
+        'delete'
+    ],
+}
 
 ROOT_URLCONF = "MiniERP.urls"
 
