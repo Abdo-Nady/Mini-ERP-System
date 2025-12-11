@@ -3,7 +3,7 @@ from django.contrib.auth.models import User
 from customer.models import Customer
 from decimal import Decimal
 from products.models import Product
-# Create your models here.
+
 
 class SalesOrder(models.Model):
     class Status(models.TextChoices):
@@ -25,11 +25,12 @@ class SalesOrder(models.Model):
             try:
                 old_status = SalesOrder.objects.get(pk=self.pk).status
             except SalesOrder.DoesNotExist:
-                old_status = None
+                pass
 
         super().save(*args, **kwargs)
 
-        if old_status != self.status:
+        # Handle status changes for existing orders
+        if old_status and old_status != self.status:
             if self.status == self.Status.CONFIRMED and old_status == self.Status.PENDING:
                 self._confirm_order()
             elif self.status == self.Status.CANCELLED and old_status == self.Status.CONFIRMED:
@@ -42,7 +43,10 @@ class SalesOrder(models.Model):
             if line.product.stock < line.qty:
                 self.status = self.Status.PENDING
                 super().save(update_fields=['status'])
-                raise ValueError(f"Not enough stock for {line.product.name}")
+                raise ValueError(
+                    f"Not enough stock for {line.product.name}. "
+                    f"Available: {line.product.stock}, Requested: {line.qty}"
+                )
 
         for line in self.lines.all():
             line.product.stock -= line.qty
@@ -51,8 +55,7 @@ class SalesOrder(models.Model):
             StockMovementLog.objects.create(
                 product=line.product,
                 qty=-line.qty,
-                user=self.created_by,
-
+                user=self.created_by
             )
 
     @transaction.atomic
@@ -65,9 +68,7 @@ class SalesOrder(models.Model):
             StockMovementLog.objects.create(
                 product=line.product,
                 qty=line.qty,
-                user=self.created_by,
-                reference_type='sales_order_cancelled',
-                reference_id=self.order_number
+                user=self.created_by
             )
 
     def update_total(self):
@@ -105,10 +106,6 @@ class SalesOrderLine(models.Model):
     def __str__(self):
         return f"{self.product.name} ({self.qty})"
 
-
-from django.db import models
-from django.contrib.auth.models import User
-from products.models import Product
 
 class StockMovementLog(models.Model):
     product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='stock_logs')

@@ -15,8 +15,7 @@ class SalesOrderViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
 
-    # مش محتاج perform_update تاني!
-    # الـ model هيعمل كل حاجة أوتوماتيك
+
 
     @action(detail=True, methods=['post'])
     def confirm(self, request, pk=None):
