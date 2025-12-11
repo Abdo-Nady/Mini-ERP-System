@@ -3,11 +3,13 @@ from django.http import HttpResponse
 from customer.models import Customer
 from sales_order.models import SalesOrder, SalesOrderLine
 from products.models import Product
-
+from datetime import date
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAdminUser
+from rest_framework.permissions import IsAdminUser, IsAuthenticated
+from rest_framework.response import Response
 
 
+# CSV FILE
 @api_view(['GET'])
 @permission_classes([IsAdminUser])
 def export_full_report(request):
@@ -136,3 +138,23 @@ def export_full_report(request):
     response['Content-Disposition'] = 'attachment; filename=full_report.xlsx'
     wb.save(response)
     return response
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def dashboard(request):
+    # total customers
+    total_customers = Customer.objects.count()
+
+    # total sales today
+    total_sales_today = SalesOrder.objects.filter(order_date__date=date.today(),
+                                                  status=SalesOrder.Status.CONFIRMED ).count()
+
+
+    low_stock_products = Product.objects.filter(stock__lte=5).values('name', 'stock')
+
+    return Response({
+        "total_customers": total_customers,
+        "total_sales_today": total_sales_today,
+        "stock_running_low": list(low_stock_products)
+    })
